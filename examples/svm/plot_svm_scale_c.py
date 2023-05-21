@@ -1,4 +1,4 @@
-"""
+r"""
 ==============================================
 Scaling the regularization parameter for SVCs
 ==============================================
@@ -33,119 +33,140 @@ within the folds of the cross validation.
 
 Since our loss function is dependent on the amount of samples, the latter
 will influence the selected value of `C`.
-The question that arises is `How do we optimally adjust C to
-account for the different amount of training samples?`
+The question that arises is "How do we optimally adjust C to
+account for the different amount of training samples?"
 
-The figures below are used to illustrate the effect of scaling our
-`C` to compensate for the change in the number of samples, in the
-case of using an `L1` penalty, as well as the `L2` penalty.
-
-L1-penalty case
------------------
-In the `L1` case, theory says that prediction consistency
-(i.e. that under given hypothesis, the estimator
-learned predicts as well as a model knowing the true distribution)
-is not possible because of the bias of the `L1`. It does say, however,
-that model consistency, in terms of finding the right set of non-zero
-parameters as well as their signs, can be achieved by scaling
-`C1`.
-
-L2-penalty case
------------------
-The theory says that in order to achieve prediction consistency, the
-penalty parameter should be kept constant
-as the number of samples grow.
-
-Simulations
-------------
-
-The two figures below plot the values of `C` on the `x-axis` and the
-corresponding cross-validation scores on the `y-axis`, for several different
-fractions of a generated data-set.
-
-In the `L1` penalty case, the cross-validation-error correlates best with
-the test-error, when scaling our `C` with the number of samples, `n`,
-which can be seen in the first figure.
-
-For the `L2` penalty case, the best result comes from the case where `C`
-is not scaled.
-
-.. topic:: Note:
-
-    Two separate datasets are used for the two different plots. The reason
-    behind this is the `L1` case works better on sparse data, while `L2`
-    is better suited to the non-sparse case.
+In the remainder of this example, we will investigate the effect of scaling
+the value of the regularization parameter `C` in regards to the number of
+samples for both L1 and L2 penalty. We will generate some synthetic datasets
+that are appropriate for each type of regularization.
 """
-print(__doc__)
-
 
 # Author: Andreas Mueller <amueller@ais.uni-bonn.de>
 #         Jaques Grobler <jaques.grobler@inria.fr>
 # License: BSD 3 clause
 
+# %%
+# L1-penalty case
+# ---------------
+# In the L1 case, theory says that prediction consistency (i.e. that under
+# given hypothesis, the estimator learned predicts as well as a model knowing
+# the true distribution) is not possible because of the bias of the L1. It
+# does say, however, that model consistency, in terms of finding the right set
+# of non-zero parameters as well as their signs, can be achieved by scaling
+# `C`.
+#
+# We will demonstrate this effect by using a synthetic dataset. This
+# dataset will be sparse, meaning that only a few features will be informative
+# and useful for the model.
+from sklearn.datasets import make_classification
 
+n_samples, n_features = 100, 300
+X, y = make_classification(
+    n_samples=n_samples, n_features=n_features, n_informative=5, random_state=1
+)
+
+# %%
+# Now, we can define a linear SVC with the `l1` penalty.
+from sklearn.svm import LinearSVC
+
+model_l1 = LinearSVC(penalty="l1", loss="squared_hinge", dual=False, tol=1e-3)
+
+# %%
+# We will compute the mean test score for different values of `C`.
 import numpy as np
+import pandas as pd
+from sklearn.model_selection import validation_curve, ShuffleSplit
+
+Cs = np.logspace(-2.3, -1.3, 10)
+train_sizes = np.linspace(0.3, 0.7, 3)
+labels = [f"fraction: {train_size}" for train_size in train_sizes]
+
+results = {"C": Cs}
+for label, train_size in zip(labels, train_sizes):
+    cv = ShuffleSplit(train_size=train_size, test_size=0.3, n_splits=50, random_state=1)
+    train_scores, test_scores = validation_curve(
+        model_l1, X, y, param_name="C", param_range=Cs, cv=cv
+    )
+    results[label] = test_scores.mean(axis=1)
+results = pd.DataFrame(results)
+
+# %%
 import matplotlib.pyplot as plt
 
-from sklearn.svm import LinearSVC
-from sklearn.cross_validation import ShuffleSplit
-from sklearn.grid_search import GridSearchCV
-from sklearn.utils import check_random_state
-from sklearn import datasets
+fig, axes = plt.subplots(nrows=1, ncols=2, sharey=True, figsize=(12, 6))
 
+# plot results without scaling C
+results.plot(x="C", ax=axes[0], logx=True)
+axes[0].set_ylabel("CV score")
+axes[0].set_title("No scaling")
 
-rnd = check_random_state(1)
+# plot results by scaling C
+for train_size_idx, label in enumerate(labels):
+    results_scaled = results[[label]].assign(
+        C_scaled=Cs * float(n_samples * train_sizes[train_size_idx])
+    )
+    results_scaled.plot(x="C_scaled", ax=axes[1], logx=True, label=label)
+axes[1].set_title("Scaling C by 1 / n_samples")
 
-# set up dataset
-n_samples = 100
-n_features = 300
+_ = fig.suptitle("Effect of scaling C with L1 penalty")
 
-# L1 data (only 5 informative features)
-X_1, y_1 = datasets.make_classification(n_samples=n_samples,
-                                        n_features=n_features, n_informative=5,
-                                        random_state=1)
+# %%
+# Here, we observe that the cross-validation-error correlates best with the
+# test-error, when scaling our `C` with the number of samples, `n`.
+#
+# L2-penalty case
+# ---------------
+# We can repeat a similar experiment with the `l2` penalty. In this case, we
+# don't need to use a sparse dataset.
+#
+# In this case, the theory says that in order to achieve prediction
+# consistency, the penalty parameter should be kept constant as the number of
+# samples grow.
+#
+# So we will repeat the same experiment by creating a linear SVC classifier
+# with the `l2` penalty and check the test score via cross-validation and
+# plot the results with and without scaling the parameter `C`.
+rng = np.random.RandomState(1)
+y = np.sign(0.5 - rng.rand(n_samples))
+X = rng.randn(n_samples, n_features // 5) + y[:, np.newaxis]
+X += 5 * rng.randn(n_samples, n_features // 5)
 
-# L2 data: non sparse, but less features
-y_2 = np.sign(.5 - rnd.rand(n_samples))
-X_2 = rnd.randn(n_samples, n_features / 5) + y_2[:, np.newaxis]
-X_2 += 5 * rnd.randn(n_samples, n_features / 5)
+# %%
+model_l2 = LinearSVC(penalty="l2", loss="squared_hinge", dual=True)
+Cs = np.logspace(-4.5, -2, 10)
 
-clf_sets = [(LinearSVC(penalty='L1', loss='L2', dual=False,
-                       tol=1e-3),
-             np.logspace(-2.3, -1.3, 10), X_1, y_1),
-            (LinearSVC(penalty='L2', loss='L2', dual=True,
-                       tol=1e-4),
-             np.logspace(-4.5, -2, 10), X_2, y_2)]
+labels = [f"fraction: {train_size}" for train_size in train_sizes]
+results = {"C": Cs}
+for label, train_size in zip(labels, train_sizes):
+    cv = ShuffleSplit(train_size=train_size, test_size=0.3, n_splits=50, random_state=1)
+    train_scores, test_scores = validation_curve(
+        model_l2, X, y, param_name="C", param_range=Cs, cv=cv
+    )
+    results[label] = test_scores.mean(axis=1)
+results = pd.DataFrame(results)
 
-colors = ['b', 'g', 'r', 'c']
+# %%
+import matplotlib.pyplot as plt
 
-for fignum, (clf, cs, X, y) in enumerate(clf_sets):
-    # set up the plot for each regressor
-    plt.figure(fignum, figsize=(9, 10))
+fig, axes = plt.subplots(nrows=1, ncols=2, sharey=True, figsize=(12, 6))
 
-    for k, train_size in enumerate(np.linspace(0.3, 0.7, 3)[::-1]):
-        param_grid = dict(C=cs)
-        # To get nice curve, we need a large number of iterations to
-        # reduce the variance
-        grid = GridSearchCV(clf, refit=False, param_grid=param_grid,
-                            cv=ShuffleSplit(n=n_samples, train_size=train_size,
-                                            n_iter=250, random_state=1))
-        grid.fit(X, y)
-        scores = [x[1] for x in grid.grid_scores_]
+# plot results without scaling C
+results.plot(x="C", ax=axes[0], logx=True)
+axes[0].set_ylabel("CV score")
+axes[0].set_title("No scaling")
 
-        scales = [(1, 'No scaling'),
-                  ((n_samples * train_size), '1/n_samples'),
-                  ]
+# plot results by scaling C
+for train_size_idx, label in enumerate(labels):
+    results_scaled = results[[label]].assign(
+        C_scaled=Cs * float(n_samples * train_sizes[train_size_idx])
+    )
+    results_scaled.plot(x="C_scaled", ax=axes[1], logx=True, label=label)
+axes[1].set_title("Scaling C by 1 / n_samples")
 
-        for subplotnum, (scaler, name) in enumerate(scales):
-            plt.subplot(2, 1, subplotnum + 1)
-            plt.xlabel('C')
-            plt.ylabel('CV Score')
-            grid_cs = cs * float(scaler)  # scale the C's
-            plt.semilogx(grid_cs, scores, label="fraction %.2f" %
-                         train_size)
-            plt.title('scaling=%s, penalty=%s, loss=%s' %
-                      (name, clf.penalty, clf.loss))
+_ = fig.suptitle("Effect of scaling C with L2 penalty")
 
-    plt.legend(loc="best")
+# %%
+# So or the L2 penalty case, the best result comes from the case where `C` is
+# not scaled.
 plt.show()

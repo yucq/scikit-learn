@@ -33,7 +33,37 @@ the kernel:
     2. ``S = 1. / (D / np.max(D))``
 
 
+.. currentmodule:: sklearn.metrics
+
+The distances between the row vectors of ``X`` and the row vectors of ``Y``
+can be evaluated using :func:`pairwise_distances`. If ``Y`` is omitted the
+pairwise distances of the row vectors of ``X`` are calculated. Similarly,
+:func:`pairwise.pairwise_kernels` can be used to calculate the kernel between `X`
+and `Y` using different kernel functions. See the API reference for more
+details.
+
+    >>> import numpy as np
+    >>> from sklearn.metrics import pairwise_distances
+    >>> from sklearn.metrics.pairwise import pairwise_kernels
+    >>> X = np.array([[2, 3], [3, 5], [5, 8]])
+    >>> Y = np.array([[1, 0], [2, 1]])
+    >>> pairwise_distances(X, Y, metric='manhattan')
+    array([[ 4.,  2.],
+           [ 7.,  5.],
+           [12., 10.]])
+    >>> pairwise_distances(X, metric='manhattan')
+    array([[0., 3., 8.],
+           [3., 0., 5.],
+           [8., 5., 0.]])
+    >>> pairwise_kernels(X, Y, metric='linear')
+    array([[ 2.,  7.],
+           [ 3., 11.],
+           [ 5., 18.]])
+
+
 .. currentmodule:: sklearn.metrics.pairwise
+
+.. _cosine_similarity:
 
 Cosine similarity
 -----------------
@@ -61,7 +91,9 @@ is equivalent to :func:`linear_kernel`, only slower.)
 
     * C.D. Manning, P. Raghavan and H. Schütze (2008). Introduction to
       Information Retrieval. Cambridge University Press.
-      http://nlp.stanford.edu/IR-book/html/htmledition/the-vector-space-model-for-scoring-1.html
+      https://nlp.stanford.edu/IR-book/html/htmledition/the-vector-space-model-for-scoring-1.html
+
+.. _linear_kernel:
 
 Linear kernel
 -------------
@@ -72,6 +104,8 @@ If ``x`` and ``y`` are column vectors, their linear kernel is:
 .. math::
 
     k(x, y) = x^\top y
+
+.. _polynomial_kernel:
 
 Polynomial kernel
 -----------------
@@ -94,6 +128,8 @@ where:
 
 If :math:`c_0 = 0` the kernel is said to be homogeneous.
 
+.. _sigmoid_kernel:
+
 Sigmoid kernel
 --------------
 The function :func:`sigmoid_kernel` computes the sigmoid kernel between two
@@ -111,6 +147,8 @@ where:
     * :math:`\gamma` is known as slope
     * :math:`c_0` is known as intercept
 
+.. _rbf_kernel:
+
 RBF kernel
 ----------
 The function :func:`rbf_kernel` computes the radial basis function (RBF) kernel
@@ -123,23 +161,43 @@ between two vectors. This kernel is defined as:
 where ``x`` and ``y`` are the input vectors. If :math:`\gamma = \sigma^{-2}`
 the kernel is known as the Gaussian kernel of variance :math:`\sigma^2`.
 
+.. _laplacian_kernel:
+
+Laplacian kernel
+----------------
+The function :func:`laplacian_kernel` is a variant on the radial basis 
+function kernel defined as:
+
+.. math::
+
+    k(x, y) = \exp( -\gamma \| x-y \|_1)
+
+where ``x`` and ``y`` are the input vectors and :math:`\|x-y\|_1` is the 
+Manhattan distance between the input vectors.
+
+It has proven useful in ML applied to noiseless data.
+See e.g. `Machine learning for quantum mechanics in a nutshell
+<https://onlinelibrary.wiley.com/doi/10.1002/qua.24954/abstract/>`_.
+
+.. _chi2_kernel:
+
 Chi-squared kernel
 ------------------
 The chi-squared kernel is a very popular choice for training non-linear SVMs in
 computer vision applications.
 It can be computed using :func:`chi2_kernel` and then passed to an
-:class:`sklearn.svm.SVC` with ``kernel="precomputed"``::
+:class:`~sklearn.svm.SVC` with ``kernel="precomputed"``::
 
     >>> from sklearn.svm import SVC
     >>> from sklearn.metrics.pairwise import chi2_kernel
     >>> X = [[0, 1], [1, 0], [.2, .8], [.7, .3]]
     >>> y = [0, 1, 0, 1]
     >>> K = chi2_kernel(X, gamma=.5)
-    >>> K                        # doctest: +ELLIPSIS
-    array([[ 1.        ,  0.36...,  0.89...,  0.58...],
-           [ 0.36...,  1.        ,  0.51...,  0.83...],
-           [ 0.89...,  0.51...,  1.        ,  0.77... ],
-           [ 0.58...,  0.83...,  0.77... ,  1.        ]])
+    >>> K
+    array([[1.        , 0.36787944, 0.89483932, 0.58364548],
+           [0.36787944, 1.        , 0.51341712, 0.83822343],
+           [0.89483932, 0.51341712, 1.        , 0.7768366 ],
+           [0.58364548, 0.83822343, 0.7768366 , 1.        ]])
 
     >>> svm = SVC(kernel='precomputed').fit(K, y)
     >>> svm.predict(K)
@@ -170,5 +228,5 @@ The chi squared kernel is most commonly used on histograms (bags) of visual word
       Local features and kernels for classification of texture and object
       categories: A comprehensive study
       International Journal of Computer Vision 2007
-      http://eprints.pascal-network.org/archive/00002309/01/Zhang06-IJCV.pdf
+      https://hal.archives-ouvertes.fr/hal-00171412/document
 

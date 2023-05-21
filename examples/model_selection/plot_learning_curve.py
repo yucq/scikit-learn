@@ -1,107 +1,183 @@
 """
-========================
-Plotting Learning Curves
-========================
+=========================================================
+Plotting Learning Curves and Checking Models' Scalability
+=========================================================
 
-On the left side the learning curve of a naive Bayes classifier is shown for
-the digits dataset. Note that the training score and the cross-validation score
-are both not very good at the end. However, the shape of the curve can be found
-in more complex datasets very often: the training score is very high at the
-beginning and decreases and the cross-validation score is very low at the
-beginning and increases. On the right side we see the learning curve of an SVM
-with RBF kernel. We can see clearly that the training score is still around
-the maximum and the validation score could be increased with more training
-samples.
+In this example, we show how to use the class
+:class:`~sklearn.model_selection.LearningCurveDisplay` to easily plot learning
+curves. In addition, we give an interpretation to the learning curves obtained
+for a naive Bayes and SVM classifiers.
+
+Then, we explore and draw some conclusions about the scalability of these predictive
+models by looking at their computational cost and not only at their statistical
+accuracy.
 """
-print(__doc__)
 
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn import cross_validation
+# %%
+# Learning Curve
+# ==============
+#
+# Learning curves show the effect of adding more samples during the training
+# process. The effect is depicted by checking the statistical performance of
+# the model in terms of training score and testing score.
+#
+# Here, we compute the learning curve of a naive Bayes classifier and a SVM
+# classifier with a RBF kernel using the digits dataset.
+from sklearn.datasets import load_digits
 from sklearn.naive_bayes import GaussianNB
 from sklearn.svm import SVC
-from sklearn.datasets import load_digits
-from sklearn.learning_curve import learning_curve
 
+X, y = load_digits(return_X_y=True)
+naive_bayes = GaussianNB()
+svc = SVC(kernel="rbf", gamma=0.001)
 
-def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None,
-                        n_jobs=1, train_sizes=np.linspace(.1, 1.0, 5)):
-    """
-    Generate a simple plot of the test and traning learning curve.
+# %%
+# The :meth:`~sklearn.model_selection.LearningCurveDisplay.from_estimator`
+# displays the learning curve given the dataset and the predictive model to
+# analyze. To get an estimate of the scores uncertainty, this method uses
+# a cross-validation procedure.
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.model_selection import LearningCurveDisplay, ShuffleSplit
 
-    Parameters
-    ----------
-    estimator : object type that implements the "fit" and "predict" methods
-        An object of that type which is cloned for each validation.
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(10, 6), sharey=True)
 
-    title : string
-        Title for the chart.
+common_params = {
+    "X": X,
+    "y": y,
+    "train_sizes": np.linspace(0.1, 1.0, 5),
+    "cv": ShuffleSplit(n_splits=50, test_size=0.2, random_state=0),
+    "score_type": "both",
+    "n_jobs": 4,
+    "line_kw": {"marker": "o"},
+    "std_display_style": "fill_between",
+    "score_name": "Accuracy",
+}
 
-    X : array-like, shape (n_samples, n_features)
-        Training vector, where n_samples is the number of samples and
-        n_features is the number of features.
+for ax_idx, estimator in enumerate([naive_bayes, svc]):
+    LearningCurveDisplay.from_estimator(estimator, **common_params, ax=ax[ax_idx])
+    handles, label = ax[ax_idx].get_legend_handles_labels()
+    ax[ax_idx].legend(handles[:2], ["Training Score", "Test Score"])
+    ax[ax_idx].set_title(f"Learning Curve for {estimator.__class__.__name__}")
 
-    y : array-like, shape (n_samples) or (n_samples, n_features), optional
-        Target relative to X for classification or regression;
-        None for unsupervised learning.
+# %%
+# We first analyze the learning curve of the naive Bayes classifier. Its shape
+# can be found in more complex datasets very often: the training score is very
+# high when using few samples for training and decreases when increasing the
+# number of samples, whereas the test score is very low at the beginning and
+# then increases when adding samples. The training and test scores become more
+# realistic when all the samples are used for training.
+#
+# We see another typical learning curve for the SVM classifier with RBF kernel.
+# The training score remains high regardless of the size of the training set.
+# On the other hand, the test score increases with the size of the training
+# dataset. Indeed, it increases up to a point where it reaches a plateau.
+# Observing such a plateau is an indication that it might not be useful to
+# acquire new data to train the model since the generalization performance of
+# the model will not increase anymore.
+#
+# Complexity analysis
+# ===================
+#
+# In addition to these learning curves, it is also possible to look at the
+# scalability of the predictive models in terms of training and scoring times.
+#
+# The :class:`~sklearn.model_selection.LearningCurveDisplay` class does not
+# provide such information. We need to resort to the
+# :func:`~sklearn.model_selection.learning_curve` function instead and make
+# the plot manually.
 
-    ylim : tuple, shape (ymin, ymax), optional
-        Defines minimum and maximum yvalues plotted.
+# %%
+from sklearn.model_selection import learning_curve
 
-    cv : integer, cross-validation generator, optional
-        If an integer is passed, it is the number of folds (defaults to 3).
-        Specific cross-validation objects can be passed, see
-        sklearn.cross_validation module for the list of possible objects
+common_params = {
+    "X": X,
+    "y": y,
+    "train_sizes": np.linspace(0.1, 1.0, 5),
+    "cv": ShuffleSplit(n_splits=50, test_size=0.2, random_state=0),
+    "n_jobs": 4,
+    "return_times": True,
+}
 
-    n_jobs : integer, optional
-        Number of jobs to run in parallel (default 1).
-    """
-    plt.figure()
-    plt.title(title)
-    if ylim is not None:
-        plt.ylim(*ylim)
-    plt.xlabel("Training examples")
-    plt.ylabel("Score")
-    train_sizes, train_scores, test_scores = learning_curve(
-        estimator, X, y, cv=cv, n_jobs=n_jobs, train_sizes=train_sizes)
-    train_scores_mean = np.mean(train_scores, axis=1)
-    train_scores_std = np.std(train_scores, axis=1)
-    test_scores_mean = np.mean(test_scores, axis=1)
-    test_scores_std = np.std(test_scores, axis=1)
-    plt.grid()
+train_sizes, _, test_scores_nb, fit_times_nb, score_times_nb = learning_curve(
+    naive_bayes, **common_params
+)
+train_sizes, _, test_scores_svm, fit_times_svm, score_times_svm = learning_curve(
+    svc, **common_params
+)
 
-    plt.fill_between(train_sizes, train_scores_mean - train_scores_std,
-                     train_scores_mean + train_scores_std, alpha=0.1,
-                     color="r")
-    plt.fill_between(train_sizes, test_scores_mean - test_scores_std,
-                     test_scores_mean + test_scores_std, alpha=0.1, color="g")
-    plt.plot(train_sizes, train_scores_mean, 'o-', color="r",
-             label="Training score")
-    plt.plot(train_sizes, test_scores_mean, 'o-', color="g",
-             label="Cross-validation score")
+# %%
+fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(16, 12), sharex=True)
 
-    plt.legend(loc="best")
-    return plt
+for ax_idx, (fit_times, score_times, estimator) in enumerate(
+    zip(
+        [fit_times_nb, fit_times_svm],
+        [score_times_nb, score_times_svm],
+        [naive_bayes, svc],
+    )
+):
+    # scalability regarding the fit time
+    ax[0, ax_idx].plot(train_sizes, fit_times.mean(axis=1), "o-")
+    ax[0, ax_idx].fill_between(
+        train_sizes,
+        fit_times.mean(axis=1) - fit_times.std(axis=1),
+        fit_times.mean(axis=1) + fit_times.std(axis=1),
+        alpha=0.3,
+    )
+    ax[0, ax_idx].set_ylabel("Fit time (s)")
+    ax[0, ax_idx].set_title(
+        f"Scalability of the {estimator.__class__.__name__} classifier"
+    )
 
+    # scalability regarding the score time
+    ax[1, ax_idx].plot(train_sizes, score_times.mean(axis=1), "o-")
+    ax[1, ax_idx].fill_between(
+        train_sizes,
+        score_times.mean(axis=1) - score_times.std(axis=1),
+        score_times.mean(axis=1) + score_times.std(axis=1),
+        alpha=0.3,
+    )
+    ax[1, ax_idx].set_ylabel("Score time (s)")
+    ax[1, ax_idx].set_xlabel("Number of training samples")
 
-digits = load_digits()
-X, y = digits.data, digits.target
+# %%
+# We see that the scalability of the SVM and naive Bayes classifiers is very
+# different. The SVM classifier complexity at fit and score time increases
+# rapidly with the number of samples. Indeed, it is known that the fit time
+# complexity of this classifier is more than quadratic with the number of
+# samples which makes it hard to scale to dataset with more than a few
+# 10,000 samples. In contrast, the naive Bayes classifier scales much better
+# with a lower complexity at fit and score time.
+#
+# Subsequently, we can check the trade-off between increased training time and
+# the cross-validation score.
 
+# %%
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 6))
 
-title = "Learning Curves (Naive Bayes)"
-# Cross validation with 100 iterations to get smoother mean test and train
-# score curves, each time with 20% data randomly selected as a validation set.
-cv = cross_validation.ShuffleSplit(digits.data.shape[0], n_iter=100,
-                                   test_size=0.2, random_state=0)
-
-estimator = GaussianNB()
-plot_learning_curve(estimator, title, X, y, ylim=(0.7, 1.01), cv=cv, n_jobs=4)
-
-title = "Learning Curves (SVM, RBF kernel, $\gamma=0.001$)"
-# SVC is more expensive so we do a lower number of CV iterations:
-cv = cross_validation.ShuffleSplit(digits.data.shape[0], n_iter=10,
-                                   test_size=0.2, random_state=0)
-estimator = SVC(gamma=0.001)
-plot_learning_curve(estimator, title, X, y, (0.7, 1.01), cv=cv, n_jobs=4)
+for ax_idx, (fit_times, test_scores, estimator) in enumerate(
+    zip(
+        [fit_times_nb, fit_times_svm],
+        [test_scores_nb, test_scores_svm],
+        [naive_bayes, svc],
+    )
+):
+    ax[ax_idx].plot(fit_times.mean(axis=1), test_scores.mean(axis=1), "o-")
+    ax[ax_idx].fill_between(
+        fit_times.mean(axis=1),
+        test_scores.mean(axis=1) - test_scores.std(axis=1),
+        test_scores.mean(axis=1) + test_scores.std(axis=1),
+        alpha=0.3,
+    )
+    ax[ax_idx].set_ylabel("Accuracy")
+    ax[ax_idx].set_xlabel("Fit time (s)")
+    ax[ax_idx].set_title(
+        f"Performance of the {estimator.__class__.__name__} classifier"
+    )
 
 plt.show()
+
+# %%
+# In these plots, we can look for the inflection point for which the
+# cross-validation score does not increase anymore and only the training time
+# increases.
